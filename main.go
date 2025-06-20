@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -255,17 +256,22 @@ func parseCfg() (*Config, error) {
 	cfg.ForceVideo = args.ForceVideo
 	//cfg.SkipVideos = args.SkipVideos
 
-	if args.SkipVideos == true || args.AudioOnly == true {
+	if args.SkipVideos || args.AudioOnly {
 		cfg.SkipVideos = true
 	}
 
-	if args.VideoOnly == true {
+	if args.VideoOnly {
 		cfg.VideoOnly = true
 		cfg.ForceVideo = true
 	}
 
-	if args.Kodi == true {
+	if args.Kodi {
 		cfg.Kodi = true
+	}
+
+	if cfg.Kodi && !cfg.VideoOnly {
+		fmt.Println("Cannot use kodi flag without video-only.")
+		return nil, err
 	}
 
 	cfg.SkipChapters = args.SkipChapters
@@ -1574,11 +1580,62 @@ func video(videoID, uguID string, cfg *Config, streamParams *StreamParams, _meta
 		}
 
 		for i := 0; i < len(meta.Notes); i++ {
-			description = append(description, fmt.Sprintf("%s\n", meta.Notes[i].Note))
+			cleanedNote := strings.Replace(meta.Notes[i].Note, "</p><p>", "\n", -1)
+			cleanedNote = strings.Replace(cleanedNote, "</p>\n", "", -1)
+			cleanedNote = strings.Replace(cleanedNote, "<p>", "", -1)
+			cleanedNote = strings.Replace(cleanedNote, "</p>", "", -1)
+			description = append(description, fmt.Sprintf("%s\n", cleanedNote))
 		}
 
 		spew.Dump(description)
-	}
+
+		/* show := TVShow{
+			Title:     "Billy Strings",
+			Plot:      "He is a legend.",
+			MPAA:      "G",
+			Genre:     "Jam Grass",
+			Premiered: "1981",
+			Status:    "",
+			Studio:    "BMFS",
+		} */
+
+		layout := "2006/01/02" // Corresponds to YYYY/MM/DD
+
+		parsedTime, err := time.Parse(layout, meta.PerformanceDateFormatted)
+		if err != nil {
+			fmt.Println("Error parsing date:", err)
+			return err
+		}
+
+		kodiEpisode := fmt.Sprintf("S%dE%s%s", parsedTime.Year(), parsedTime.Format("01"), parsedTime.Format("02"))
+
+		episode := Episode{
+			Title:   fmt.Sprintf("%s - %s", meta.PerformanceDateFormatted, meta.Venue),
+			Plot:    strings.Join(description, ""),
+			Aired:   meta.PerformanceDateFormatted,
+			Episode: kodiEpisode,
+			Season:  parsedTime.Year(),
+		}
+
+		videoFname = strings.Replace(videoFname, meta.PerformanceDateFormatted, kodiEpisode, 1)
+
+		fullPath := filepath.Join(cfg.OutPath, sanitise(videoFname+"_")) // todo once moved uncomment the end of this line //+retRes))
+		file, err := os.Create(fullPath + ".nfo")
+		if err != nil {
+			fmt.Println("Error creating file:", err)
+			return err
+		}
+		defer file.Close()
+
+		file.WriteString(xml.Header)
+		encoder := xml.NewEncoder(file)
+		encoder.Indent("", "    ")
+		if err := encoder.Encode(episode); err != nil {
+			fmt.Println("Error encoding XML:", err)
+		} else {
+			fmt.Println(".nfo created successfully.")
+		}
+	} // end kodi
 
 	fmt.Println(videoFname)
 
