@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/alexflint/go-arg"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/dustin/go-humanize"
 	"github.com/grafov/m3u8"
 )
@@ -49,14 +50,14 @@ const (
 	bitrateRegex   = `[\w]+(?:_(\d+)k_v\d+)`
 	// history file
 	historyFileName      = "history"
-	historySuffixAudio     = "Aud"
-	historySuffixVideo     = "Vid"
+	historySuffixAudio   = "Aud"
+	historySuffixVideo   = "Vid"
 	historyFileExtension = ".txt"
 )
 
 var (
-	jar, _               = cookiejar.New(nil)
-	client               = &http.Client{Jar: jar}
+	jar, _ = cookiejar.New(nil)
+	client = &http.Client{Jar: jar}
 )
 
 var regexStrings = [11]string{
@@ -69,7 +70,7 @@ var regexStrings = [11]string{
 	`^https://play.nugs.net/livestream/(\d+)/exclusive$`,
 	`^https://play.nugs.net/watch/livestreams/exclusive/(\d+)$`,
 	`^https://play.nugs.net/#/my-webcasts/\d+-(\d+)-\d+-\d+$`,
-	`^https://www.nugs.net/on/demandware.store/Sites-NugsNet-Site/d`+
+	`^https://www.nugs.net/on/demandware.store/Sites-NugsNet-Site/d` +
 		`efault/(?:Stash-QueueVideo|NugsVideo-GetStashVideo)\?([a-zA-Z0-9=%&-]+$)`,
 	`^https://play.nugs.net/library/webcast/(\d+)$`,
 }
@@ -79,11 +80,11 @@ var qualityMap = map[string]Quality{
 	".flac16/": {Specs: "16-bit / 44.1 kHz FLAC", Extension: ".flac", Format: 2},
 	// .mqa24/ must be above .flac?
 	".mqa24/":  {Specs: "24-bit / 48 kHz MQA", Extension: ".flac", Format: 3},
-	".flac?": {Specs: "FLAC", Extension: ".flac", Format: 2},
+	".flac?":   {Specs: "FLAC", Extension: ".flac", Format: 2},
 	".s360/":   {Specs: "360 Reality Audio", Extension: ".mp4", Format: 4},
 	".aac150/": {Specs: "150 Kbps AAC", Extension: ".m4a", Format: 5},
-	".m4a?": {Specs: "AAC", Extension: ".m4a", Format: 5},
-	".m3u8?":	{Extension: ".m4a", Format: 6},
+	".m4a?":    {Specs: "AAC", Extension: ".m4a", Format: 5},
+	".m3u8?":   {Extension: ".m4a", Format: 6},
 }
 
 var resolveRes = map[int]string{
@@ -254,13 +255,17 @@ func parseCfg() (*Config, error) {
 	cfg.ForceVideo = args.ForceVideo
 	//cfg.SkipVideos = args.SkipVideos
 
-	if args.SkipVideos == true || args.AudioOnly == true{
+	if args.SkipVideos == true || args.AudioOnly == true {
 		cfg.SkipVideos = true
 	}
 
 	if args.VideoOnly == true {
 		cfg.VideoOnly = true
 		cfg.ForceVideo = true
+	}
+
+	if args.Kodi == true {
+		cfg.Kodi = true
 	}
 
 	cfg.SkipChapters = args.SkipChapters
@@ -790,7 +795,6 @@ func tsToAac(decData []byte, outPath, ffmpegNameStr string) error {
 	return nil
 }
 
-
 func hlsOnly(trackPath, manUrl, ffmpegNameStr string) error {
 	req, err := client.Get(manUrl)
 	if err != nil {
@@ -939,8 +943,8 @@ func processTrack(folPath string, trackNum, trackTotal int, cfg *Config, track *
 
 func album(albumID string, cfg *Config, streamParams *StreamParams, artResp *AlbArtResp) error {
 	var (
-		meta   *AlbArtResp
-		tracks []Track
+		meta          *AlbArtResp
+		tracks        []Track
 		historySuffix string
 	)
 	if albumID == "" {
@@ -1248,9 +1252,9 @@ func downloadVideo(videoPath, _url string) error {
 
 	totalBytes := do.ContentLength
 	counter := &WriteCounter{
-		Total:     totalBytes,
-		TotalStr:  humanize.Bytes(uint64(totalBytes)),
-		StartTime: time.Now().UnixMilli(),
+		Total:      totalBytes,
+		TotalStr:   humanize.Bytes(uint64(totalBytes)),
+		StartTime:  time.Now().UnixMilli(),
 		Downloaded: startByte,
 	}
 	_, err = io.Copy(f, io.TeeReader(do.Body, counter))
@@ -1354,7 +1358,6 @@ func getNextChapStart(chapters []interface{}, idx int) float64 {
 	}
 	return 0
 }
-
 
 func writeChapsFile(chapters []interface{}, dur int) error {
 	f, err := os.OpenFile(chapsFileFname, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
@@ -1469,14 +1472,28 @@ func parseLstreamMeta(_meta *ArtistMeta) *AlbumMeta {
 	return parsed
 }
 
+func formatSeconds(sec int) (retMin int, retSec int) {
+	retMin = sec / 60 / 60
+	retSec = sec % 60 % 60
+	return retMin, retSec
+}
+
+func ConvertSecondsToHMS(totalSeconds int) (hours, minutes int) {
+	hours = totalSeconds / 3600
+	remainingSeconds := totalSeconds % 3600
+	minutes = remainingSeconds / 60
+	//seconds = remainingSeconds % 60
+	return
+}
+
 func video(videoID, uguID string, cfg *Config, streamParams *StreamParams, _meta *AlbArtResp, isLstream bool) error {
 
 	var (
-		chapsAvail bool
-		skuID int
+		chapsAvail  bool
+		skuID       int
 		manifestUrl string
-		meta *AlbArtResp
-		err error
+		meta        *AlbArtResp
+		err         error
 	)
 
 	if _meta != nil {
@@ -1490,6 +1507,7 @@ func video(videoID, uguID string, cfg *Config, streamParams *StreamParams, _meta
 		meta = m.Response
 	}
 
+	//spew.Dump(meta)
 	alreadyDownloaded, err := checkHistory(videoID, getHistoryFileName(meta.ArtistID, historySuffixVideo, meta.ArtistName))
 	if err != nil {
 		fmt.Println("Error checking history:", err)
@@ -1504,14 +1522,66 @@ func video(videoID, uguID string, cfg *Config, streamParams *StreamParams, _meta
 	if !cfg.SkipChapters {
 		chapsAvail = !reflect.ValueOf(meta.VideoChapters).IsZero()
 	}
-	
+
 	videoFname := meta.ArtistName + " - " + strings.TrimRight(meta.ContainerInfo, " ")
-	fmt.Println(videoFname)
+
 	if len(videoFname) > 110 {
 		videoFname = videoFname[:110]
 		fmt.Println(
 			"Video filename was chopped because it exceeds 120 characters.")
 	}
+
+	if cfg.Kodi == true {
+		videoFname = strings.Replace(videoFname, meta.PerformanceDateShort, meta.PerformanceDateFormatted, 1)
+		//HhmmssTotalRunningTime
+		var setSeconds int
+		var description []string
+		setSeconds = 0
+
+		var nfoSet map[string][]NfoTrack
+		nfoSet = make(map[string][]NfoTrack)
+
+		for i := 0; i < len(meta.Tracks); i++ {
+			var nfoTrack NfoTrack
+			nfoTrack.SongTitle = meta.Tracks[i].SongTitle
+			nfoTrack.TrackNum = meta.Tracks[i].TrackNum
+			nfoTrack.HhmmssTotalRunningTime = meta.Tracks[i].HhmmssTotalRunningTime
+			nfoTrack.TotalRunningTime = meta.Tracks[i].TotalRunningTime
+
+			key := "Set" + strconv.Itoa(meta.Tracks[i].SetNum)
+
+			nfoSet[key] = append(nfoSet[key], nfoTrack)
+		}
+
+		oldKey := ""
+		for key, value := range nfoSet {
+			if oldKey != key {
+				oldKey = key
+				setSeconds = 0
+			}
+			description = append(description, fmt.Sprintf("%s\n", key)) // set header
+
+			for i := 0; i < len(value); i++ {
+				TrackNum := value[i].TrackNum
+				if key == "Set4" {
+					TrackNum = i + 1
+				}
+				description = append(description, fmt.Sprintf("\t%d - %s\t(%s)\n", TrackNum, value[i].SongTitle, value[i].HhmmssTotalRunningTime)) // tracks
+				setSeconds += value[i].TotalRunningTime
+			}
+			hrs, minutes := ConvertSecondsToHMS(setSeconds)
+			description = append(description, fmt.Sprintf("\n%d Songs, %d hr %d min", len(value), hrs, minutes)) // set footer
+		}
+
+		for i := 0; i < len(meta.Notes); i++ {
+			description = append(description, fmt.Sprintf("%s\n", meta.Notes[i].Note))
+		}
+
+		spew.Dump(description)
+	}
+
+	fmt.Println(videoFname)
+
 	if isLstream {
 		skuID = getLstreamSku(meta.ProductFormatList)
 	} else {
@@ -1654,7 +1724,7 @@ func catalogPlist(_plistId, legacyToken string, cfg *Config, streamParams *Strea
 }
 
 func paidLstream(query, uguID string, cfg *Config, streamParams *StreamParams) error {
-    q, err := url.ParseQuery(query)
+	q, err := url.ParseQuery(query)
 	if err != nil {
 		return err
 	}

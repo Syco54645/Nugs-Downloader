@@ -1,5 +1,9 @@
 package main
 
+import (
+	"encoding/xml"
+)
+
 type Transport struct{}
 
 type WriteCounter struct {
@@ -22,9 +26,10 @@ type Config struct {
 	UseFfmpegEnvVar bool
 	FfmpegNameStr   string
 	ForceVideo      bool
-	SkipVideos		bool
-	VideoOnly		bool
-	SkipChapters	bool
+	SkipVideos      bool
+	VideoOnly       bool
+	SkipChapters    bool
+	Kodi            bool
 }
 
 type Args struct {
@@ -37,6 +42,7 @@ type Args struct {
 	AudioOnly    bool     `arg:"--audio-only" help:"Download only audio in artist URLs."`
 	VideoOnly    bool     `arg:"--video-only" help:"Download only video in artist URLs."`
 	SkipChapters bool     `arg:"--skip-chapters" help:"Skips chapters for videos."`
+	Kodi         bool     `arg:"--kodi" help:"Names files to be compliant with Kodi standards and creates local metadata."`
 }
 
 type Auth struct {
@@ -309,9 +315,9 @@ type AlbArtResp struct {
 }
 
 type AlbumMeta struct {
-	MethodName                  string     `json:"methodName"`
-	ResponseAvailabilityCode    int        `json:"responseAvailabilityCode"`
-	ResponseAvailabilityCodeStr string     `json:"responseAvailabilityCodeStr"`
+	MethodName                  string      `json:"methodName"`
+	ResponseAvailabilityCode    int         `json:"responseAvailabilityCode"`
+	ResponseAvailabilityCodeStr string      `json:"responseAvailabilityCodeStr"`
 	Response                    *AlbArtResp `json:"Response"`
 }
 
@@ -471,4 +477,45 @@ type ArtistMeta struct {
 type PurchasedManResp struct {
 	FileURL      string `json:"fileURL"`
 	ResponseCode int    `json:"responseCode"`
+}
+
+type Season struct {
+	XMLName      xml.Name `xml:"season"`
+	Title        string   `xml:"title"`
+	Plot         string   `xml:"plot"`
+	SeasonNumber int      `xml:"seasonnumber"`
+}
+
+type TVShow struct {
+	XMLName   xml.Name `xml:"tvshow"`
+	Title     string   `xml:"title"`
+	Plot      string   `xml:"plot"`
+	MPAA      string   `xml:"mpaa"`
+	Genre     string   `xml:"genre"`
+	Premiered string   `xml:"premiered"`
+	Status    string   `xml:"status"`
+	Studio    string   `xml:"studio"`
+}
+
+type Episode struct {
+	XMLName xml.Name `xml:"episodedetails"`
+	Title   string   `xml:"title"`
+	Plot    string   `xml:"plot"`
+	Aired   string   `xml:"aired"`
+	Episode string   `xml:"episode"`
+	Season  int      `xml:"season"`
+}
+
+type NfoTrack struct {
+	TrackNum               int
+	SongTitle              string
+	HhmmssTotalRunningTime string
+	TotalRunningTime       int
+}
+
+type NfoSet struct {
+	Set1 []NfoTrack
+	Set2 []NfoTrack
+	Set3 []NfoTrack
+	Set4 []NfoTrack
 }
